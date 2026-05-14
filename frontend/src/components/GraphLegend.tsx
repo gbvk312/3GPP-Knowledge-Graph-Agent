@@ -1,10 +1,10 @@
 const LEGEND_ITEMS = [
-  { type: 'Spec', color: '#1d9bf0', icon: '🔵' },
-  { type: 'Feature', color: '#00ba7c', icon: '🟢' },
-  { type: 'Whitepaper', color: '#f97316', icon: '🟠' },
-  { type: 'Vendor', color: '#a855f7', icon: '🟣' },
-  { type: 'Release', color: '#6b7280', icon: '⚪' },
-  { type: 'ASN1Type', color: '#ef4444', icon: '🔴' },
+  { type: 'Spec', color: '#3b82f6' },
+  { type: 'Feature', color: '#10b981' },
+  { type: 'Whitepaper', color: '#f97316' },
+  { type: 'Vendor', color: '#a855f7' },
+  { type: 'Release', color: '#6b7280' },
+  { type: 'ASN1Type', color: '#ef4444' },
 ];
 
 export default function GraphLegend() {
@@ -12,7 +12,7 @@ export default function GraphLegend() {
     <div className="graph-legend">
       {LEGEND_ITEMS.map(({ type, color }) => (
         <div key={type} className="legend-item">
-          <span className="legend-dot" style={{ background: color }} />
+          <span className="legend-dot" style={{ background: color, color }} />
           <span>{type}</span>
         </div>
       ))}

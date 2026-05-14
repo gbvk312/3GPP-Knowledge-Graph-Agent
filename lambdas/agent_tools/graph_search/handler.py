@@ -1,9 +1,12 @@
 import json
 import os
 import urllib.request
+import urllib.error
 
 NEPTUNE_ENDPOINT = os.environ["NEPTUNE_ENDPOINT"]
 NEPTUNE_URL = f"https://{NEPTUNE_ENDPOINT}:8182/openCypher"
+MAX_DEPTH = 3
+MAX_RESULTS = 200
 
 
 def execute_cypher(query: str, parameters: dict = None):
@@ -13,27 +16,33 @@ def execute_cypher(query: str, parameters: dict = None):
     data = json.dumps(body).encode("utf-8")
     req = urllib.request.Request(NEPTUNE_URL, data=data, method="POST",
                                 headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req) as resp:
-        return json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Neptune connection failed: {e}") from e
 
 
 def lambda_handler(event, context):
     params = extract_params(event)
     start_node = params.get("start_node", "")
     edge_types = params.get("edge_types", [])
-    depth = int(params.get("depth", 1))
+    depth = min(int(params.get("depth", 1)), MAX_DEPTH)
+
+    if not start_node:
+        return build_response({"nodes": [], "edges": [], "error": "start_node is required"})
 
     # Build query based on edge type filter
     if edge_types:
-        rel_filter = "|".join(edge_types)
+        rel_filter = "|".join(t for t in edge_types if t.isalpha() or t == "_")
         query = (
             f"MATCH path = (s {{id: $start}})-[:{rel_filter}*1..{depth}]-(t) "
-            f"RETURN nodes(path) AS nodes, relationships(path) AS rels"
+            f"RETURN nodes(path) AS nodes, relationships(path) AS rels LIMIT {MAX_RESULTS}"
         )
     else:
         query = (
             f"MATCH path = (s {{id: $start}})-[*1..{depth}]-(t) "
-            f"RETURN nodes(path) AS nodes, relationships(path) AS rels"
+            f"RETURN nodes(path) AS nodes, relationships(path) AS rels LIMIT {MAX_RESULTS}"
         )
 
     result = execute_cypher(query, {"start": start_node})

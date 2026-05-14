@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { askAgent, AgentResponse, CytoscapeNode, CytoscapeEdge } from './api/agent';
 import FeatureCloud from './components/FeatureCloud';
 import DetailPanel from './components/DetailPanel';
@@ -33,6 +33,7 @@ export default function App() {
   const [edges, setEdges] = useState<CytoscapeEdge[]>([]);
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [visibleNodeTypes, setVisibleNodeTypes] = useState<Set<string>>(new Set(['Spec', 'Feature', 'Whitepaper', 'Vendor', 'Release', 'ASN1Type']));
   const [visibleEdgeTypes, setVisibleEdgeTypes] = useState<Set<string>>(new Set(['REFERENCES', 'DEFINED_IN', 'EXPLAINS', 'SUPERSEDES', 'DEPLOYED_BY', 'PUBLISHED_BY', 'IMPORTS']));
 
@@ -55,7 +56,7 @@ export default function App() {
     return { typeCounts, totalNodes: nodes.length, totalEdges: edges.length, topNode };
   }, [nodes, edges]);
 
-  const handleSearch = async (q?: string) => {
+  const handleSearch = useCallback(async (q?: string) => {
     const searchQuery = q || query;
     if (!searchQuery.trim()) return;
     setQuery(searchQuery);
@@ -63,26 +64,27 @@ export default function App() {
     setSelectedNode(null);
     setError(null);
     try {
-      const res = await askAgent(searchQuery);
+      const res = await askAgent(searchQuery, sessionId || undefined);
       setResponse(res);
       setNodes(res.nodes);
       setEdges(res.edges);
+      if (res.session_id) setSessionId(res.session_id);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to query agent');
     } finally {
       setLoading(false);
     }
-  };
+  }, [query, sessionId]);
 
-  const handleNodeSelect = (nodeId: string) => {
+  const handleNodeSelect = useCallback((nodeId: string) => {
     const node = nodes.find(n => n.data.id === nodeId);
     if (!node) return;
     const neighborEdges = edges.filter(e => e.data.source === nodeId || e.data.target === nodeId);
     const neighbors = neighborEdges.map(e => e.data.source === nodeId ? e.data.target : e.data.source);
     setSelectedNode({ id: nodeId, label: node.data.label, type: node.data.type, connections: neighborEdges.length, neighbors });
-  };
+  }, [nodes, edges]);
 
-  const handleNodeExpand = (newNodes: CytoscapeNode[], newEdges: CytoscapeEdge[]) => {
+  const handleNodeExpand = useCallback((newNodes: CytoscapeNode[], newEdges: CytoscapeEdge[]) => {
     setNodes(prev => {
       const ids = new Set(prev.map(n => n.data.id));
       return [...prev, ...newNodes.filter(n => !ids.has(n.data.id))];
@@ -91,7 +93,7 @@ export default function App() {
       const keys = new Set(prev.map(e => `${e.data.source}-${e.data.target}-${e.data.label}`));
       return [...prev, ...newEdges.filter(e => !keys.has(`${e.data.source}-${e.data.target}-${e.data.label}`))];
     });
-  };
+  }, []);
 
   return (
     <>
@@ -105,7 +107,7 @@ export default function App() {
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSearch()}
-            placeholder="Search specs, features, or ask a question..."
+            placeholder="Ask about 5G specs, features, or standards..."
             className="search-input"
             aria-label="Search query"
           />
@@ -118,17 +120,14 @@ export default function App() {
         </button>
       </header>
 
-      {/* Quick search chips */}
       <nav className="chips-bar" aria-label="Quick searches">
         {QUICK_QUERIES.map(q => (
           <button key={q} className="chip" onClick={() => handleSearch(q)}>{q}</button>
         ))}
       </nav>
 
-      {/* Error banner */}
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
-      {/* Chat response */}
       {response && response.summary && (
         <div className="chat-response">
           <div className="chat-response-header">
@@ -139,12 +138,11 @@ export default function App() {
         </div>
       )}
 
-      {/* Stats bar */}
       {stats && (
         <div className="stats-bar">
           <span>📊 {stats.totalNodes} nodes</span>
           <span>🔗 {stats.totalEdges} edges</span>
-          {stats.topNode && <span>⭐ Most connected: TS {stats.topNode[0]} ({stats.topNode[1]})</span>}
+          {stats.topNode && <span>⭐ Hub: {stats.topNode[0]} ({stats.topNode[1]} connections)</span>}
         </div>
       )}
 

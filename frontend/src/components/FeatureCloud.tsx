@@ -6,8 +6,8 @@ import { CytoscapeNode, CytoscapeEdge, expandNode } from '../api/agent';
 try { cytoscape.use(coseBilkent); } catch (_) { /* already registered */ }
 
 const NODE_COLORS: Record<string, string> = {
-  Spec: '#1d9bf0',
-  Feature: '#00ba7c',
+  Spec: '#3b82f6',
+  Feature: '#10b981',
   Whitepaper: '#f97316',
   Vendor: '#a855f7',
   Release: '#6b7280',
@@ -17,9 +17,10 @@ const NODE_COLORS: Record<string, string> = {
 function getThemeColors() {
   const isLight = document.documentElement.getAttribute('data-theme') === 'light';
   return {
-    textColor: isLight ? '#111827' : '#e7e9ea',
-    textOutline: isLight ? '#ffffff' : '#0f1419',
-    edgeColor: isLight ? '#d1d5db' : '#374151',
+    textColor: isLight ? '#1e293b' : '#7a8ba0',
+    textOutline: isLight ? '#ffffff' : '#0a0e14',
+    edgeColor: isLight ? '#94a3b8' : 'rgba(255,255,255,0.12)',
+    edgeArrowColor: isLight ? '#64748b' : 'rgba(255,255,255,0.15)',
   };
 }
 
@@ -36,16 +37,15 @@ export default function FeatureCloud({ nodes, edges, onNodeSelect, onNodeExpand 
 
   const handleZoomIn = useCallback(() => { cyRef.current?.zoom(cyRef.current.zoom() * 1.3); }, []);
   const handleZoomOut = useCallback(() => { cyRef.current?.zoom(cyRef.current.zoom() * 0.7); }, []);
-  const handleFit = useCallback(() => { cyRef.current?.fit(undefined, 40); }, []);
+  const handleFit = useCallback(() => { cyRef.current?.fit(undefined, 50); }, []);
   const handleReset = useCallback(() => {
     const cy = cyRef.current;
-    if (cy) cy.layout({ name: 'cose-bilkent', animate: true, animationDuration: 600, nodeDimensionsIncludeLabels: true } as any).run();
+    if (cy) cy.layout({ name: 'cose-bilkent', animate: true, animationDuration: 700, nodeDimensionsIncludeLabels: true, idealEdgeLength: 140, nodeRepulsion: 9000 } as any).run();
   }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;
-
-    const { textColor, textOutline, edgeColor } = getThemeColors();
+    const { textColor, textOutline, edgeColor, edgeArrowColor } = getThemeColors();
 
     const cy = cytoscape({
       container: containerRef.current,
@@ -57,27 +57,28 @@ export default function FeatureCloud({ nodes, edges, onNodeSelect, onNodeExpand 
             'background-color': '#6b7280',
             color: textColor,
             'font-size': '9px',
+            'font-weight': 500,
             'text-valign': 'bottom',
-            'text-margin-y': 5,
+            'text-margin-y': 6,
             'text-outline-color': textOutline,
             'text-outline-width': 2,
             width: 'data(size)',
             height: 'data(size)',
             'border-width': 0,
             'border-color': '#fff',
-            'transition-property': 'border-width, border-color, width, height',
-            'transition-duration': 150,
+            'transition-property': 'border-width, border-color, width, height, opacity',
+            'transition-duration': 200,
           } as any,
         },
         {
           selector: 'edge',
           style: {
             'line-color': edgeColor,
-            'target-arrow-color': edgeColor,
+            'target-arrow-color': edgeArrowColor,
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
             width: 1.5,
-            opacity: 0.6,
+            opacity: 0.7,
           },
         },
         {
@@ -89,54 +90,38 @@ export default function FeatureCloud({ nodes, edges, onNodeSelect, onNodeExpand 
             'text-outline-color': textOutline,
             'text-outline-width': 1.5,
             opacity: 1,
-            width: 2.5,
+            width: 2,
           } as any,
         },
         {
           selector: 'node:selected',
-          style: {
-            'border-width': 3,
-            'border-color': '#fbbf24',
-          },
+          style: { 'border-width': 3, 'border-color': '#fbbf24' },
         },
         {
           selector: 'node.highlighted',
-          style: {
-            'border-width': 2,
-            'border-color': '#fff',
-          },
+          style: { 'border-width': 2, 'border-color': 'rgba(255,255,255,0.6)' },
         },
-        {
-          selector: 'node.dimmed',
-          style: { opacity: 0.2 },
-        },
-        {
-          selector: 'edge.dimmed',
-          style: { opacity: 0.08 },
-        },
+        { selector: 'node.dimmed', style: { opacity: 0.15 } },
+        { selector: 'edge.dimmed', style: { opacity: 0.05 } },
         ...Object.entries(NODE_COLORS).map(([type, color]) => ({
           selector: `node[type="${type}"]`,
           style: { 'background-color': color },
         })),
       ],
-      layout: { name: 'cose-bilkent', animate: false, nodeDimensionsIncludeLabels: true, idealEdgeLength: 120, nodeRepulsion: 8000 } as any,
+      layout: { name: 'cose-bilkent', animate: false, nodeDimensionsIncludeLabels: true, idealEdgeLength: 140, nodeRepulsion: 9000 } as any,
       minZoom: 0.2,
       maxZoom: 4,
     });
 
-    // Node click → select
     cy.on('tap', 'node', (evt) => {
       const nodeId = evt.target.data('id');
       onNodeSelect(nodeId);
-      // Highlight neighbors
       cy.elements().removeClass('highlighted dimmed');
-      const selected = evt.target;
-      const neighborhood = selected.neighborhood().add(selected);
+      const neighborhood = evt.target.neighborhood().add(evt.target);
       cy.elements().not(neighborhood).addClass('dimmed');
       neighborhood.nodes().addClass('highlighted');
     });
 
-    // Double-click → expand
     cy.on('dbltap', 'node', async (evt) => {
       const nodeId = evt.target.data('id');
       try {
@@ -147,15 +132,11 @@ export default function FeatureCloud({ nodes, edges, onNodeSelect, onNodeExpand 
       }
     });
 
-    // Edge hover → show label
     cy.on('mouseover', 'edge', (evt) => { evt.target.addClass('hover'); });
     cy.on('mouseout', 'edge', (evt) => { evt.target.removeClass('hover'); });
 
-    // Background click → clear selection
     cy.on('tap', (evt) => {
-      if (evt.target === cy) {
-        cy.elements().removeClass('highlighted dimmed');
-      }
+      if (evt.target === cy) cy.elements().removeClass('highlighted dimmed');
     });
 
     cyRef.current = cy;
@@ -166,7 +147,6 @@ export default function FeatureCloud({ nodes, edges, onNodeSelect, onNodeExpand 
     const cy = cyRef.current;
     if (!cy) return;
 
-    // Compute degree for sizing
     const degree: Record<string, number> = {};
     edges.forEach(e => {
       degree[e.data.source] = (degree[e.data.source] || 0) + 1;
@@ -174,23 +154,20 @@ export default function FeatureCloud({ nodes, edges, onNodeSelect, onNodeExpand 
     });
     const maxDeg = Math.max(...Object.values(degree), 1);
 
-    // Clear and rebuild
     cy.elements().remove();
-
     const elements: cytoscape.ElementDefinition[] = [];
     for (const n of nodes) {
       const d = degree[n.data.id] || 0;
-      const size = 20 + (d / maxDeg) * 35;
+      const size = 22 + (d / maxDeg) * 38;
       elements.push({ group: 'nodes', data: { ...n.data, size } });
     }
     for (const e of edges) {
-      const edgeId = `${e.data.source}-${e.data.target}-${e.data.label}`;
-      elements.push({ group: 'edges', data: { ...e.data, id: edgeId } });
+      elements.push({ group: 'edges', data: { ...e.data, id: `${e.data.source}-${e.data.target}-${e.data.label}` } });
     }
 
     if (elements.length > 0) {
       cy.add(elements);
-      cy.layout({ name: 'cose-bilkent', animate: true, animationDuration: 800, nodeDimensionsIncludeLabels: true, idealEdgeLength: 120, nodeRepulsion: 8000 } as any).run();
+      cy.layout({ name: 'cose-bilkent', animate: true, animationDuration: 900, nodeDimensionsIncludeLabels: true, idealEdgeLength: 140, nodeRepulsion: 9000 } as any).run();
     }
   }, [nodes, edges]);
 
