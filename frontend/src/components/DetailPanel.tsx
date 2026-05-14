@@ -1,87 +1,106 @@
-import { AgentResponse } from '../api/agent';
+import { AgentResponse, CytoscapeNode, CytoscapeEdge } from '../api/agent';
+import { SelectedNode } from '../App';
 
 interface Props {
   response: AgentResponse | null;
+  selectedNode: SelectedNode | null;
+  allNodes: CytoscapeNode[];
+  allEdges: CytoscapeEdge[];
 }
 
-export default function DetailPanel({ response }: Props) {
-  if (!response) {
+export default function DetailPanel({ response, selectedNode, allNodes }: Props) {
+  if (!response && !selectedNode) {
     return (
-      <div style={{ color: '#6b7280', textAlign: 'center', marginTop: 80 }}>
-        <p style={{ fontSize: 48 }}>🔬</p>
-        <p style={{ marginTop: 12 }}>Search for a 3GPP spec, feature, or ask a question</p>
+      <div className="empty-detail">
+        <p className="empty-icon">🔬</p>
+        <p>Search for a 3GPP spec, feature, or ask a question</p>
+        <p className="empty-hint">Click a node to see details<br/>Double-click to expand</p>
       </div>
     );
   }
 
   const specLink = (spec: string) =>
-    `https://www.3gpp.org/ftp/Specs/archive/${spec}/`;
+    `https://www.3gpp.org/ftp/Specs/archive/${spec.replace('.', '')}/`;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Summary */}
-      <section>
-        <h3 style={{ color: '#1d9bf0', marginBottom: 8, fontSize: 14 }}>Summary</h3>
-        <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-          {response.summary}
-        </div>
-      </section>
-
-      {/* Metadata Table */}
-      {response.citations.length > 0 && (
-        <section>
-          <h3 style={{ color: '#1d9bf0', marginBottom: 8, fontSize: 14 }}>Metadata</h3>
-          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #2f3336' }}>
-                {['Spec', 'Release', 'Section'].map(h => (
-                  <th key={h} style={{ padding: '6px 8px', textAlign: 'left', color: '#9ca3af' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {response.citations.map((c, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid #2f3336' }}>
-                  <td style={{ padding: '6px 8px' }}>{c.spec}</td>
-                  <td style={{ padding: '6px 8px' }}>{c.release}</td>
-                  <td style={{ padding: '6px 8px' }}>§{c.section}</td>
-                </tr>
+    <div className="detail-content">
+      {/* Selected Node Card */}
+      {selectedNode && (
+        <section className="detail-section node-card">
+          <div className="node-card-header">
+            <span className={`node-badge ${selectedNode.type.toLowerCase()}`}>{selectedNode.type}</span>
+            <span className="node-card-title">{selectedNode.label}</span>
+          </div>
+          <div className="node-card-stats">
+            <div className="stat-item">
+              <span className="stat-value">{selectedNode.connections}</span>
+              <span className="stat-label">connections</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-value">{selectedNode.neighbors.length}</span>
+              <span className="stat-label">neighbors</span>
+            </div>
+          </div>
+          <div className="node-neighbors">
+            <span className="neighbors-label">Connected to:</span>
+            <div className="neighbor-chips">
+              {selectedNode.neighbors.slice(0, 12).map(n => (
+                <span key={n} className="neighbor-chip">{n}</span>
               ))}
-            </tbody>
-          </table>
+              {selectedNode.neighbors.length > 12 && (
+                <span className="neighbor-chip more">+{selectedNode.neighbors.length - 12} more</span>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Summary */}
+      {response && (
+        <section className="detail-section">
+          <h3 className="section-title">Summary</h3>
+          <div className="summary-text">{response.summary}</div>
         </section>
       )}
 
       {/* Citations */}
-      {response.citations.length > 0 && (
-        <section>
-          <h3 style={{ color: '#1d9bf0', marginBottom: 8, fontSize: 14 }}>Citations</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {response && response.citations.length > 0 && (
+        <section className="detail-section">
+          <h3 className="section-title">Citations ({response.citations.length})</h3>
+          <div className="citations-list">
             {response.citations.map((c, i) => (
-              <div key={i} style={{ background: '#1a1f25', borderRadius: 8, padding: 12, fontSize: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <a
-                    href={specLink(c.spec)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: '#1d9bf0', textDecoration: 'none' }}
-                  >
+              <div key={i} className="citation-card">
+                <div className="citation-header">
+                  <a href={specLink(c.spec)} target="_blank" rel="noopener noreferrer" className="citation-link">
                     📄 TS {c.spec} · {c.release} · §{c.section}
                   </a>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(c.text)}
-                    style={{
-                      background: 'none', border: '1px solid #2f3336', borderRadius: 4,
-                      color: '#9ca3af', cursor: 'pointer', padding: '2px 8px', fontSize: 11,
-                    }}
-                  >
-                    Copy
+                  <button onClick={() => navigator.clipboard.writeText(c.text)} className="copy-btn" title="Copy text">
+                    📋
                   </button>
                 </div>
-                <p style={{ marginTop: 6, color: '#9ca3af', lineHeight: 1.5 }}>{c.text}</p>
+                <p className="citation-text">{c.text}</p>
               </div>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* Graph Overview */}
+      {allNodes.length > 0 && !selectedNode && (
+        <section className="detail-section">
+          <h3 className="section-title">Graph Overview</h3>
+          <table className="overview-table">
+            <tbody>
+              {Object.entries(
+                allNodes.reduce((acc, n) => { acc[n.data.type] = (acc[n.data.type] || 0) + 1; return acc; }, {} as Record<string, number>)
+              ).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
+                <tr key={type}>
+                  <td><span className={`node-badge ${type.toLowerCase()}`}>{type}</span></td>
+                  <td className="count-cell">{count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </section>
       )}
     </div>

@@ -1,13 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import cytoscape from 'cytoscape';
 import coseBilkent from 'cytoscape-cose-bilkent';
 import { CytoscapeNode, CytoscapeEdge, expandNode } from '../api/agent';
 
-try {
-  cytoscape.use(coseBilkent);
-} catch (e) {
-  // already registered
-}
+try { cytoscape.use(coseBilkent); } catch (_) { /* already registered */ }
 
 const NODE_COLORS: Record<string, string> = {
   Spec: '#1d9bf0',
@@ -15,20 +11,27 @@ const NODE_COLORS: Record<string, string> = {
   Whitepaper: '#f97316',
   Vendor: '#a855f7',
   Release: '#6b7280',
-  Section: '#6b7280',
   ASN1Type: '#ef4444',
-  Unknown: '#6b7280',
 };
 
 interface Props {
   nodes: CytoscapeNode[];
   edges: CytoscapeEdge[];
+  onNodeSelect: (nodeId: string) => void;
   onNodeExpand: (nodes: CytoscapeNode[], edges: CytoscapeEdge[]) => void;
 }
 
-export default function FeatureCloud({ nodes, edges, onNodeExpand }: Props) {
+export default function FeatureCloud({ nodes, edges, onNodeSelect, onNodeExpand }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
+
+  const handleZoomIn = useCallback(() => { cyRef.current?.zoom(cyRef.current.zoom() * 1.3); }, []);
+  const handleZoomOut = useCallback(() => { cyRef.current?.zoom(cyRef.current.zoom() * 0.7); }, []);
+  const handleFit = useCallback(() => { cyRef.current?.fit(undefined, 40); }, []);
+  const handleReset = useCallback(() => {
+    const cy = cyRef.current;
+    if (cy) cy.layout({ name: 'cose-bilkent', animate: true, animationDuration: 600, nodeDimensionsIncludeLabels: true } as any).run();
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -42,52 +45,106 @@ export default function FeatureCloud({ nodes, edges, onNodeExpand }: Props) {
             label: 'data(label)',
             'background-color': '#6b7280',
             color: '#e7e9ea',
-            'font-size': '10px',
+            'font-size': '9px',
             'text-valign': 'bottom',
-            'text-margin-y': 4,
-            width: 30,
-            height: 30,
-          },
+            'text-margin-y': 5,
+            'text-outline-color': '#0f1419',
+            'text-outline-width': 2,
+            width: 'data(size)',
+            height: 'data(size)',
+            'border-width': 0,
+            'border-color': '#fff',
+            'transition-property': 'border-width, border-color, width, height',
+            'transition-duration': 150,
+          } as any,
         },
         {
           selector: 'edge',
           style: {
-            label: 'data(label)',
-            'line-color': '#4b5563',
-            'target-arrow-color': '#4b5563',
+            'line-color': '#374151',
+            'target-arrow-color': '#374151',
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
-            'font-size': '8px',
-            color: '#9ca3af',
+            width: 1.5,
+            opacity: 0.6,
           },
         },
-        // Color-coded node types
+        {
+          selector: 'edge:active, edge.hover',
+          style: {
+            label: 'data(label)',
+            'font-size': '8px',
+            color: '#9ca3af',
+            'text-outline-color': '#0f1419',
+            'text-outline-width': 1.5,
+            opacity: 1,
+            width: 2.5,
+          } as any,
+        },
+        {
+          selector: 'node:selected',
+          style: {
+            'border-width': 3,
+            'border-color': '#fbbf24',
+          },
+        },
+        {
+          selector: 'node.highlighted',
+          style: {
+            'border-width': 2,
+            'border-color': '#fff',
+          },
+        },
+        {
+          selector: 'node.dimmed',
+          style: { opacity: 0.2 },
+        },
+        {
+          selector: 'edge.dimmed',
+          style: { opacity: 0.08 },
+        },
         ...Object.entries(NODE_COLORS).map(([type, color]) => ({
           selector: `node[type="${type}"]`,
           style: { 'background-color': color },
         })),
       ],
-      layout: { name: 'cose-bilkent', animate: false, nodeDimensionsIncludeLabels: true } as any,
+      layout: { name: 'cose-bilkent', animate: false, nodeDimensionsIncludeLabels: true, idealEdgeLength: 120, nodeRepulsion: 8000 } as any,
+      minZoom: 0.2,
+      maxZoom: 4,
     });
 
-    cy.on('tap', 'node', async (evt) => {
+    // Node click → select
+    cy.on('tap', 'node', (evt) => {
+      const nodeId = evt.target.data('id');
+      onNodeSelect(nodeId);
+      // Highlight neighbors
+      cy.elements().removeClass('highlighted dimmed');
+      const selected = evt.target;
+      const neighborhood = selected.neighborhood().add(selected);
+      cy.elements().not(neighborhood).addClass('dimmed');
+      neighborhood.nodes().addClass('highlighted');
+    });
+
+    // Double-click → expand
+    cy.on('dbltap', 'node', async (evt) => {
       const nodeId = evt.target.data('id');
       try {
-        const { nodes: newNodes, edges: newEdges } = await expandNode(nodeId);
-        onNodeExpand(newNodes, newEdges);
-      } catch (e) {
-        console.error('Expand failed:', e);
+        const { nodes: n, edges: e } = await expandNode(nodeId);
+        onNodeExpand(n, e);
+      } catch (err) {
+        console.error('Expand failed:', err);
       }
     });
 
-    cy.on('mouseover', 'node', (evt) => {
-      const node = evt.target;
-      node.style('border-width', 3);
-      node.style('border-color', '#fff');
-    });
+    // Edge hover → show label
+    cy.on('mouseover', 'edge', (evt) => { evt.target.addClass('hover'); });
+    cy.on('mouseout', 'edge', (evt) => { evt.target.removeClass('hover'); });
 
-    cy.on('mouseout', 'node', (evt) => {
-      evt.target.style('border-width', 0);
+    // Background click → clear selection
+    cy.on('tap', (evt) => {
+      if (evt.target === cy) {
+        cy.elements().removeClass('highlighted dimmed');
+      }
     });
 
     cyRef.current = cy;
@@ -96,31 +153,45 @@ export default function FeatureCloud({ nodes, edges, onNodeExpand }: Props) {
 
   useEffect(() => {
     const cy = cyRef.current;
-    if (!cy || (nodes.length === 0 && edges.length === 0)) return;
+    if (!cy) return;
 
-    // Add new elements without full re-render
-    const existingNodeIds = new Set(cy.nodes().map(n => n.id()));
-    const existingEdgeIds = new Set(cy.edges().map(e => e.id()));
+    // Compute degree for sizing
+    const degree: Record<string, number> = {};
+    edges.forEach(e => {
+      degree[e.data.source] = (degree[e.data.source] || 0) + 1;
+      degree[e.data.target] = (degree[e.data.target] || 0) + 1;
+    });
+    const maxDeg = Math.max(...Object.values(degree), 1);
 
-    const newElements: cytoscape.ElementDefinition[] = [];
+    // Clear and rebuild
+    cy.elements().remove();
 
+    const elements: cytoscape.ElementDefinition[] = [];
     for (const n of nodes) {
-      if (!existingNodeIds.has(n.data.id)) {
-        newElements.push({ group: 'nodes', data: n.data });
-      }
+      const d = degree[n.data.id] || 0;
+      const size = 20 + (d / maxDeg) * 35;
+      elements.push({ group: 'nodes', data: { ...n.data, size } });
     }
     for (const e of edges) {
       const edgeId = `${e.data.source}-${e.data.target}-${e.data.label}`;
-      if (!existingEdgeIds.has(edgeId)) {
-        newElements.push({ group: 'edges', data: { ...e.data, id: edgeId } });
-      }
+      elements.push({ group: 'edges', data: { ...e.data, id: edgeId } });
     }
 
-    if (newElements.length > 0) {
-      cy.add(newElements);
-      cy.layout({ name: 'cose-bilkent', animate: true, animationDuration: 500, nodeDimensionsIncludeLabels: true } as any).run();
+    if (elements.length > 0) {
+      cy.add(elements);
+      cy.layout({ name: 'cose-bilkent', animate: true, animationDuration: 800, nodeDimensionsIncludeLabels: true, idealEdgeLength: 120, nodeRepulsion: 8000 } as any).run();
     }
   }, [nodes, edges]);
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <div className="zoom-controls">
+        <button onClick={handleZoomIn} title="Zoom in">+</button>
+        <button onClick={handleZoomOut} title="Zoom out">−</button>
+        <button onClick={handleFit} title="Fit to view">⊡</button>
+        <button onClick={handleReset} title="Reset layout">↻</button>
+      </div>
+    </div>
+  );
 }
