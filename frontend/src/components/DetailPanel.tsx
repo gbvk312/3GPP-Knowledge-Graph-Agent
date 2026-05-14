@@ -14,8 +14,29 @@ export default function DetailPanel({ response, selectedNode, allNodes }: Props)
     return (
       <div className="empty-detail">
         <p className="empty-icon">🔬</p>
-        <p>Search for a 3GPP spec, feature, or ask a question</p>
-        <p className="empty-hint">Click a node to see details<br/>Double-click to expand</p>
+        <p>Explore the 3GPP Knowledge Graph</p>
+        <div className="onboarding-tips">
+          <div className="onboarding-tip">
+            <span className="tip-icon">🔍</span>
+            <span>Type a query or click a quick chip to search</span>
+          </div>
+          <div className="onboarding-tip">
+            <span className="tip-icon">👆</span>
+            <span>Click a node to see its details and connections</span>
+          </div>
+          <div className="onboarding-tip">
+            <span className="tip-icon">👆👆</span>
+            <span>Double-click a node to expand its neighbors</span>
+          </div>
+          <div className="onboarding-tip">
+            <span className="tip-icon">⌨️</span>
+            <span>Ctrl+K to focus search, Escape to deselect</span>
+          </div>
+          <div className="onboarding-tip">
+            <span className="tip-icon">🎨</span>
+            <span>Node shapes differ by type for accessibility</span>
+          </div>
+        </div>
       </div>
     );
   }
