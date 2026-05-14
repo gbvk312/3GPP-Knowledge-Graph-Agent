@@ -5,6 +5,8 @@ __pycache__/
 .venv/
 venv/
 .uv/
+*.egg
+.python-version
 
 # Node.js
 node_modules/
@@ -13,31 +15,47 @@ frontend/.env
 
 # CDK
 cdk.out/
+cdk.context.json
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+*.sublime-*
 
 # Environment
 .env
+.env.local
+.env.*.local
 
 # AWS
 .aws-sam/
+samconfig.toml
 
 # OS
 .DS_Store
 Thumbs.db
+Desktop.ini
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
+coverage/
 
 # Build artifacts
 *.zip
 /tmp/
+*.whl
 
 # Logs
 *.log
+npm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# Misc
+*.bak
+*.tmp

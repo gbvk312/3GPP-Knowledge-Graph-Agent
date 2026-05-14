@@ -4,6 +4,8 @@ import FeatureCloud from './components/FeatureCloud';
 import DetailPanel from './components/DetailPanel';
 import GraphLegend from './components/GraphLegend';
 import FilterBar from './components/FilterBar';
+import ErrorBanner from './components/ErrorBanner';
+import { useTheme } from './hooks/useTheme';
 
 const QUICK_QUERIES = [
   '5G NR architecture',
@@ -23,12 +25,14 @@ export interface SelectedNode {
 }
 
 export default function App() {
+  const { theme, toggle: toggleTheme } = useTheme();
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<AgentResponse | null>(null);
   const [nodes, setNodes] = useState<CytoscapeNode[]>([]);
   const [edges, setEdges] = useState<CytoscapeEdge[]>([]);
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [visibleNodeTypes, setVisibleNodeTypes] = useState<Set<string>>(new Set(['Spec', 'Feature', 'Whitepaper', 'Vendor', 'Release', 'ASN1Type']));
   const [visibleEdgeTypes, setVisibleEdgeTypes] = useState<Set<string>>(new Set(['REFERENCES', 'DEFINED_IN', 'EXPLAINS', 'SUPERSEDES', 'DEPLOYED_BY', 'PUBLISHED_BY', 'IMPORTS']));
 
@@ -57,13 +61,14 @@ export default function App() {
     setQuery(searchQuery);
     setLoading(true);
     setSelectedNode(null);
+    setError(null);
     try {
       const res = await askAgent(searchQuery);
       setResponse(res);
       setNodes(res.nodes);
       setEdges(res.edges);
     } catch (e) {
-      console.error(e);
+      setError(e instanceof Error ? e.message : 'Failed to query agent');
     } finally {
       setLoading(false);
     }
@@ -90,31 +95,49 @@ export default function App() {
 
   return (
     <>
-      <header className="header">
+      <header className="header" role="banner">
         <div className="header-brand">
-          <span className="header-icon">⚡</span>
+          <span className="header-icon" aria-hidden="true">⚡</span>
           <span className="header-title">3GPP Knowledge Graph</span>
         </div>
-        <div className="search-bar">
+        <div className="search-bar" role="search">
           <input
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSearch()}
             placeholder="Search specs, features, or ask a question..."
             className="search-input"
+            aria-label="Search query"
           />
-          <button onClick={() => handleSearch()} disabled={loading} className="search-btn">
+          <button onClick={() => handleSearch()} disabled={loading} className="search-btn" aria-label="Search">
             {loading ? <span className="spinner" /> : '→'}
           </button>
         </div>
+        <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
+          {theme === 'dark' ? '☀️' : '🌙'}
+        </button>
       </header>
 
       {/* Quick search chips */}
-      <div className="chips-bar">
+      <nav className="chips-bar" aria-label="Quick searches">
         {QUICK_QUERIES.map(q => (
           <button key={q} className="chip" onClick={() => handleSearch(q)}>{q}</button>
         ))}
-      </div>
+      </nav>
+
+      {/* Error banner */}
+      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
+
+      {/* Chat response */}
+      {response && response.summary && (
+        <div className="chat-response">
+          <div className="chat-response-header">
+            <span className="chat-icon">🤖</span>
+            <span className="chat-label">Agent Response</span>
+          </div>
+          <div className="chat-response-text">{response.summary}</div>
+        </div>
+      )}
 
       {/* Stats bar */}
       {stats && (
@@ -125,7 +148,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="main-layout">
+      <main className="main-layout" role="main">
         <div className="graph-panel">
           <FilterBar
             visibleNodeTypes={visibleNodeTypes}

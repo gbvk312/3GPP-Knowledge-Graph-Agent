@@ -76,13 +76,20 @@ A serverless AWS application that ingests 3GPP technical specifications and vend
 │       └── python/shared/
 ├── schemas/                        # OpenAPI 3.0 schemas for action groups
 ├── frontend/                       # React + TypeScript + Cytoscape.js
+│   ├── public/
+│   │   └── favicon.svg             # App favicon
 │   ├── src/
 │   │   ├── api/agent.ts            # API client
 │   │   ├── components/
+│   │   │   ├── DetailPanel.tsx     # Summary + citations panel
+│   │   │   ├── ErrorBanner.tsx     # Error notification banner
 │   │   │   ├── FeatureCloud.tsx    # Cytoscape.js graph panel
-│   │   │   └── DetailPanel.tsx     # Summary + citations panel
+│   │   │   ├── FilterBar.tsx       # Node/edge type filter controls
+│   │   │   └── GraphLegend.tsx     # Color legend overlay
+│   │   ├── hooks/
+│   │   │   └── useTheme.ts         # Dark/light theme toggle hook
 │   │   ├── App.tsx                 # Main layout
-│   │   └── index.css               # Global styles
+│   │   └── index.css               # Global styles (responsive, themed)
 │   ├── .env.example                # Environment template
 │   ├── vite.config.ts              # Vite configuration
 │   └── package.json                # Frontend dependencies
@@ -158,6 +165,13 @@ cd frontend
 cp .env.example .env  # Set VITE_API_URL to your deployed API Gateway URL
 npm run dev
 ```
+
+Features:
+- Dark/light theme toggle (persisted to localStorage)
+- Responsive layout for mobile/tablet
+- Error banner with dismiss for failed API calls
+- Markdown rendering in agent responses
+- Accessible (ARIA labels, semantic HTML, keyboard navigation)
 
 For production build:
 ```bash

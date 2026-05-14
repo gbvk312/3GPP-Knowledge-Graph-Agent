@@ -14,6 +14,15 @@ const NODE_COLORS: Record<string, string> = {
   ASN1Type: '#ef4444',
 };
 
+function getThemeColors() {
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  return {
+    textColor: isLight ? '#111827' : '#e7e9ea',
+    textOutline: isLight ? '#ffffff' : '#0f1419',
+    edgeColor: isLight ? '#d1d5db' : '#374151',
+  };
+}
+
 interface Props {
   nodes: CytoscapeNode[];
   edges: CytoscapeEdge[];
@@ -36,6 +45,8 @@ export default function FeatureCloud({ nodes, edges, onNodeSelect, onNodeExpand 
   useEffect(() => {
     if (!containerRef.current) return;
 
+    const { textColor, textOutline, edgeColor } = getThemeColors();
+
     const cy = cytoscape({
       container: containerRef.current,
       style: [
@@ -44,11 +55,11 @@ export default function FeatureCloud({ nodes, edges, onNodeSelect, onNodeExpand 
           style: {
             label: 'data(label)',
             'background-color': '#6b7280',
-            color: '#e7e9ea',
+            color: textColor,
             'font-size': '9px',
             'text-valign': 'bottom',
             'text-margin-y': 5,
-            'text-outline-color': '#0f1419',
+            'text-outline-color': textOutline,
             'text-outline-width': 2,
             width: 'data(size)',
             height: 'data(size)',
@@ -61,8 +72,8 @@ export default function FeatureCloud({ nodes, edges, onNodeSelect, onNodeExpand 
         {
           selector: 'edge',
           style: {
-            'line-color': '#374151',
-            'target-arrow-color': '#374151',
+            'line-color': edgeColor,
+            'target-arrow-color': edgeColor,
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
             width: 1.5,
@@ -74,8 +85,8 @@ export default function FeatureCloud({ nodes, edges, onNodeSelect, onNodeExpand 
           style: {
             label: 'data(label)',
             'font-size': '8px',
-            color: '#9ca3af',
-            'text-outline-color': '#0f1419',
+            color: textColor,
+            'text-outline-color': textOutline,
             'text-outline-width': 1.5,
             opacity: 1,
             width: 2.5,

@@ -1,3 +1,4 @@
+import ReactMarkdown from 'react-markdown';
 import { AgentResponse, CytoscapeNode, CytoscapeEdge } from '../api/agent';
 import { SelectedNode } from '../App';
 
@@ -59,7 +60,7 @@ export default function DetailPanel({ response, selectedNode, allNodes }: Props)
       {response && (
         <section className="detail-section">
           <h3 className="section-title">Summary</h3>
-          <div className="summary-text">{response.summary}</div>
+          <div className="summary-text"><ReactMarkdown>{response.summary}</ReactMarkdown></div>
         </section>
       )}
 
