@@ -1,0 +1,60 @@
+openapi: 3.0.0
+info:
+  title: Metadata Query API
+  version: 1.0.0
+paths:
+  /metadata_query:
+    post:
+      operationId: metadataQuery
+      summary: Query structured metadata from the 3GPP features and chunks tables
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                spec:
+                  type: string
+                  description: Specification number (e.g. 38.331)
+                release:
+                  type: string
+                  description: Release version (e.g. Rel-18)
+                section:
+                  type: string
+                  description: Section number (e.g. 5.5.4)
+                feature:
+                  type: string
+                  description: Feature name
+                vendor:
+                  type: string
+                  description: Vendor name filter
+      responses:
+        "200":
+          description: Matching metadata records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        feature_id:
+                          type: string
+                        spec:
+                          type: string
+                        release:
+                          type: string
+                        section:
+                          type: string
+                        feature:
+                          type: string
+                        technology:
+                          type: string
+                        keywords:
+                          type: array
+                          items:
+                            type: string

@@ -1,0 +1,56 @@
+openapi: 3.0.0
+info:
+  title: Vector Search API
+  version: 1.0.0
+paths:
+  /vector_search:
+    post:
+      operationId: vectorSearch
+      summary: Search the 3GPP knowledge base using semantic vector similarity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  description: Natural language query to search for relevant 3GPP specification chunks
+                top_k:
+                  type: integer
+                  default: 5
+                  description: Number of results to return
+                filters:
+                  type: object
+                  description: Optional filters (spec, release, source_type)
+                  properties:
+                    spec:
+                      type: string
+                    release:
+                      type: string
+                    source_type:
+                      type: string
+                      enum: [3gpp, whitepaper]
+      responses:
+        "200":
+          description: Search results with relevant chunks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        chunk_id:
+                          type: string
+                        text:
+                          type: string
+                        score:
+                          type: number
+                        metadata:
+                          type: object

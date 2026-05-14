@@ -1,0 +1,43 @@
+openapi: 3.0.0
+info:
+  title: Whitepaper Lookup API
+  version: 1.0.0
+paths:
+  /whitepaper_lookup:
+    post:
+      operationId: whitepaperLookup
+      summary: Find vendor whitepapers that explain a given spec or feature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [spec_or_feature]
+              properties:
+                spec_or_feature:
+                  type: string
+                  description: Specification number or feature name to find related whitepapers
+      responses:
+        "200":
+          description: Matching whitepaper chunks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        chunk_id:
+                          type: string
+                        text:
+                          type: string
+                        vendor:
+                          type: string
+                        title:
+                          type: string
+                        score:
+                          type: number

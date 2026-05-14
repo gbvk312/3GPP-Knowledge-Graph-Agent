@@ -1,0 +1,66 @@
+openapi: 3.0.0
+info:
+  title: Graph Search API
+  version: 1.0.0
+paths:
+  /graph_search:
+    post:
+      operationId: graphSearch
+      summary: Traverse the 3GPP knowledge graph from a starting node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [start_node]
+              properties:
+                start_node:
+                  type: string
+                  description: ID of the starting node (e.g. spec ID like 38.331)
+                edge_types:
+                  type: array
+                  items:
+                    type: string
+                    enum: [REFERENCES, IMPORTS, DEFINED_IN, EXPLAINS, RELATED_TO, SUPERSEDES, DEPLOYED_BY, PUBLISHED_BY]
+                  description: Filter by edge types
+                depth:
+                  type: integer
+                  default: 1
+                  description: Number of hops to traverse
+      responses:
+        "200":
+          description: Cytoscape.js compatible graph data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        data:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            label:
+                              type: string
+                            type:
+                              type: string
+                  edges:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        data:
+                          type: object
+                          properties:
+                            source:
+                              type: string
+                            target:
+                              type: string
+                            label:
+                              type: string
