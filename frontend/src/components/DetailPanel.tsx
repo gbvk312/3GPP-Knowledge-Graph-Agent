@@ -1,4 +1,3 @@
-import ReactMarkdown from 'react-markdown';
 import { AgentResponse } from '../api/agent';
 
 interface Props {
@@ -23,8 +22,8 @@ export default function DetailPanel({ response }: Props) {
       {/* Summary */}
       <section>
         <h3 style={{ color: '#1d9bf0', marginBottom: 8, fontSize: 14 }}>Summary</h3>
-        <div style={{ fontSize: 13, lineHeight: 1.6 }}>
-          <ReactMarkdown>{response.summary}</ReactMarkdown>
+        <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+          {response.summary}
         </div>
       </section>
 

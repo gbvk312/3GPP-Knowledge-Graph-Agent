@@ -9,6 +9,7 @@ venv/
 # Node.js
 node_modules/
 frontend/dist/
+frontend/.env
 
 # CDK
 cdk.out/
@@ -17,10 +18,10 @@ cdk.out/
 .idea/
 .vscode/
 *.swp
+*.swo
 
 # Environment
 .env
-frontend/.env
 
 # AWS
 .aws-sam/
@@ -33,3 +34,10 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Build artifacts
+*.zip
+/tmp/
+
+# Logs
+*.log

@@ -3,7 +3,11 @@ import cytoscape from 'cytoscape';
 import coseBilkent from 'cytoscape-cose-bilkent';
 import { CytoscapeNode, CytoscapeEdge, expandNode } from '../api/agent';
 
-cytoscape.use(coseBilkent);
+try {
+  cytoscape.use(coseBilkent);
+} catch (e) {
+  // already registered
+}
 
 const NODE_COLORS: Record<string, string> = {
   Spec: '#1d9bf0',
