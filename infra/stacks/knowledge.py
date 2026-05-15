@@ -3,6 +3,8 @@ from aws_cdk import (
     aws_opensearchserverless as oss,
     aws_iam as iam,
     aws_bedrock as bedrock,
+    aws_lambda as _lambda,
+    CustomResource,
 )
 from constructs import Construct
 from infra.stacks.storage import Team49StorageStack
@@ -60,14 +62,38 @@ class Team49KnowledgeStack(cdk.Stack):
             },
         )
 
+        # Index creator Lambda
+        index_creator_fn = _lambda.Function(self, "team49-oss-index-creator",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="index.handler",
+            code=_lambda.Code.from_asset("lambdas/oss_index_creator"),
+            timeout=cdk.Duration.minutes(5),
+        )
+        index_creator_fn.add_to_role_policy(iam.PolicyStatement(
+            actions=["aoss:APIAccessAll"],
+            resources=[self.collection.attr_arn],
+        ))
+
+        # Data access policy must include both the KB role AND the index creator Lambda role
         data_access_policy = oss.CfnAccessPolicy(self, "team49-data-access-policy",
             name="team49-data-access-policy",
             type="data",
             policy=cdk.Fn.sub(
-                '[{"Rules":[{"ResourceType":"index","Resource":["index/${name}/*"],"Permission":["aoss:CreateIndex","aoss:UpdateIndex","aoss:DescribeIndex","aoss:ReadDocument","aoss:WriteDocument"]},{"ResourceType":"collection","Resource":["collection/${name}"],"Permission":["aoss:CreateCollectionItems","aoss:DescribeCollectionItems","aoss:UpdateCollectionItems"]}],"Principal":["${role}"]}]',
-                {"name": self.collection_name, "role": self.kb_role.role_arn}
+                '[{"Rules":[{"ResourceType":"index","Resource":["index/${name}/*"],"Permission":["aoss:CreateIndex","aoss:UpdateIndex","aoss:DescribeIndex","aoss:ReadDocument","aoss:WriteDocument"]},{"ResourceType":"collection","Resource":["collection/${name}"],"Permission":["aoss:CreateCollectionItems","aoss:DescribeCollectionItems","aoss:UpdateCollectionItems"]}],"Principal":["${role}","${lambda_role}"]}]',
+                {"name": self.collection_name, "role": self.kb_role.role_arn, "lambda_role": index_creator_fn.role.role_arn}
             ),
         )
+
+        # Custom resource to create the index
+        index_resource = CustomResource(self, "team49-oss-index",
+            service_token=index_creator_fn.function_arn,
+            properties={
+                "CollectionEndpoint": self.collection.attr_collection_endpoint,
+                "IndexName": "team49-kb-index",
+            },
+        )
+        index_resource.node.add_dependency(data_access_policy)
+        index_resource.node.add_dependency(self.collection)
 
         self.knowledge_base = bedrock.CfnKnowledgeBase(self, "team49-knowledge-base",
             name="team49-3gpp-knowledge-base",
@@ -85,12 +111,13 @@ class Team49KnowledgeStack(cdk.Stack):
                     vector_index_name="team49-kb-index",
                     field_mapping=bedrock.CfnKnowledgeBase.OpenSearchServerlessFieldMappingProperty(
                         vector_field="embedding",
-                        text_field="text",
-                        metadata_field="metadata",
+                        text_field="AMAZON_BEDROCK_TEXT_CHUNK",
+                        metadata_field="AMAZON_BEDROCK_METADATA",
                     ),
                 ),
             ),
         )
+        self.knowledge_base.node.add_dependency(index_resource)
 
         self.data_source = bedrock.CfnDataSource(self, "team49-data-source",
             knowledge_base_id=self.knowledge_base.attr_knowledge_base_id,

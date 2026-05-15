@@ -39,11 +39,6 @@ class Team49GraphStack(cdk.Stack):
             allow_all_outbound=True,
         )
 
-        self.vpc.add_interface_endpoint("team49-neptune-endpoint",
-            service=ec2.InterfaceVpcEndpointAwsService("neptune-db"),
-            security_groups=[self.neptune_sg],
-        )
-
         subnet_group = neptune.CfnDBSubnetGroup(self, "team49-neptune-subnet-group",
             db_subnet_group_description="Neptune subnet group",
             subnet_ids=[s.subnet_id for s in self.vpc.isolated_subnets],
