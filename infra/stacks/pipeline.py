@@ -6,6 +6,7 @@ from aws_cdk import (
     aws_stepfunctions_tasks as tasks,
     aws_events as events,
     aws_events_targets as targets,
+    aws_sqs as sqs,
     Duration,
 )
 from constructs import Construct
@@ -93,35 +94,123 @@ class Team49PipelineStack(cdk.Stack):
             resources=[f"arn:aws:bedrock:{cdk.Aws.REGION}:{cdk.Aws.ACCOUNT_ID}:knowledge-base/*"],
         ))
 
-        # Step Functions workflow
+        # DLQ for failed pipeline executions
+        self.dlq = sqs.Queue(self, "team49-pipeline-dlq",
+            queue_name="team49-pipeline-dlq",
+            retention_period=Duration.days(14),
+        )
+
+        # Failure state captures error info
+        fail_state = sfn.Fail(self, "PipelineFailed",
+            cause="Pipeline step failed after retries",
+            error="PipelineError",
+        )
+
+        # Step Functions workflow with retry and catch on each task
         textract_task = tasks.LambdaInvoke(self, "ExtractText",
             lambda_function=textract_fn,
             output_path="$.Payload",
+            retry_on_service_exceptions=False,
         )
+        textract_task.add_retry(
+            errors=["Lambda.ServiceException", "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException", "States.TaskFailed"],
+            interval=Duration.seconds(3),
+            max_attempts=3,
+            backoff_rate=2.0,
+        )
+        textract_task.add_catch(fail_state, errors=["States.ALL"],
+                                result_path="$.error")
+
         metadata_task = tasks.LambdaInvoke(self, "ExtractMetadata",
             lambda_function=metadata_fn,
             output_path="$.Payload",
+            retry_on_service_exceptions=False,
         )
+        metadata_task.add_retry(
+            errors=["Lambda.ServiceException", "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException", "States.TaskFailed"],
+            interval=Duration.seconds(3),
+            max_attempts=3,
+            backoff_rate=2.0,
+        )
+        metadata_task.add_catch(fail_state, errors=["States.ALL"],
+                                result_path="$.error")
+
         chunker_task = tasks.LambdaInvoke(self, "SemanticChunk",
             lambda_function=chunker_fn,
             output_path="$.Payload",
+            retry_on_service_exceptions=False,
         )
+        chunker_task.add_retry(
+            errors=["Lambda.ServiceException", "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException", "States.TaskFailed"],
+            interval=Duration.seconds(3),
+            max_attempts=3,
+            backoff_rate=2.0,
+        )
+        chunker_task.add_catch(fail_state, errors=["States.ALL"],
+                               result_path="$.error")
+
         relationship_task = tasks.LambdaInvoke(self, "ExtractRelationships",
             lambda_function=relationship_fn,
             output_path="$.Payload",
+            retry_on_service_exceptions=False,
         )
+        relationship_task.add_retry(
+            errors=["Lambda.ServiceException", "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException", "States.TaskFailed"],
+            interval=Duration.seconds(3),
+            max_attempts=3,
+            backoff_rate=2.0,
+        )
+        relationship_task.add_catch(fail_state, errors=["States.ALL"],
+                                    result_path="$.error")
+
         neptune_task = tasks.LambdaInvoke(self, "WriteToNeptune",
             lambda_function=neptune_fn,
             output_path="$.Payload",
+            retry_on_service_exceptions=False,
         )
+        neptune_task.add_retry(
+            errors=["Lambda.ServiceException", "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException", "States.TaskFailed"],
+            interval=Duration.seconds(5),
+            max_attempts=3,
+            backoff_rate=2.0,
+        )
+        neptune_task.add_catch(fail_state, errors=["States.ALL"],
+                               result_path="$.error")
+
         metadata_writer_task = tasks.LambdaInvoke(self, "WriteMetadata",
             lambda_function=metadata_writer_fn,
             output_path="$.Payload",
+            retry_on_service_exceptions=False,
         )
+        metadata_writer_task.add_retry(
+            errors=["Lambda.ServiceException", "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException", "States.TaskFailed"],
+            interval=Duration.seconds(3),
+            max_attempts=3,
+            backoff_rate=2.0,
+        )
+        metadata_writer_task.add_catch(fail_state, errors=["States.ALL"],
+                                       result_path="$.error")
+
         kb_sync_task = tasks.LambdaInvoke(self, "SyncKnowledgeBase",
             lambda_function=kb_sync_fn,
             output_path="$.Payload",
+            retry_on_service_exceptions=False,
         )
+        kb_sync_task.add_retry(
+            errors=["Lambda.ServiceException", "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException", "States.TaskFailed"],
+            interval=Duration.seconds(5),
+            max_attempts=3,
+            backoff_rate=2.0,
+        )
+        kb_sync_task.add_catch(fail_state, errors=["States.ALL"],
+                               result_path="$.error")
 
         chain = (
             textract_task
@@ -137,6 +226,7 @@ class Team49PipelineStack(cdk.Stack):
             state_machine_name="team49-ingestion-pipeline",
             definition_body=sfn.DefinitionBody.from_chainable(chain),
             timeout=Duration.minutes(30),
+            tracing_enabled=True,
         )
 
         # EventBridge rule for S3 uploads

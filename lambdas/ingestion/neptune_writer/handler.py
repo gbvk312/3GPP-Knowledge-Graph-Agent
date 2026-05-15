@@ -8,15 +8,9 @@ logger = get_logger(__name__)
 NEPTUNE_ENDPOINT = os.environ["NEPTUNE_ENDPOINT"]
 NEPTUNE_URL = f"https://{NEPTUNE_ENDPOINT}:8182/openCypher"
 
-NODE_TYPE_MAP = {
-    "spec": "Spec",
-    "feature": "Feature",
-    "whitepaper": "Whitepaper",
-    "vendor": "Vendor",
-    "release": "Release",
-    "section": "Section",
-    "procedure": "Procedure",
-    "asn1type": "ASN1Type",
+ALLOWED_EDGE_TYPES = {
+    "REFERENCES", "IMPORTS", "DEFINED_IN", "EXPLAINS",
+    "SUPERSEDES", "DEPLOYED_BY", "PUBLISHED_BY", "RELATED_TO",
 }
 
 
@@ -27,64 +21,101 @@ def execute_cypher(query: str, parameters: dict = None):
     data = json.dumps(body).encode("utf-8")
     req = urllib.request.Request(NEPTUNE_URL, data=data, method="POST",
                                 headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req) as resp:
+    with urllib.request.urlopen(req, timeout=30) as resp:
         return json.loads(resp.read())
 
 
 def write_nodes(metadata: dict):
+    """Batch all node MERGEs into a single multi-statement call."""
     spec = metadata.get("spec", "unknown")
     release = metadata.get("release", "unknown")
     feature = metadata.get("feature")
     vendor = metadata.get("vendor")
     source_type = metadata.get("source_type", "3gpp")
 
-    # Spec node
-    execute_cypher(
-        "MERGE (s:Spec {id: $id}) SET s.title = $title, s.release = $release",
-        {"id": spec, "title": f"TS {spec}", "release": release},
-    )
-
-    # Release node
-    execute_cypher("MERGE (r:Release {id: $id})", {"id": release})
-
-    # Feature node
+    # Build batch of node operations
+    nodes = [
+        {"label": "Spec", "id": spec, "props": {"title": f"TS {spec}", "release": release}},
+        {"label": "Release", "id": release, "props": {}},
+    ]
     if feature:
-        execute_cypher(
-            "MERGE (f:Feature {id: $id}) SET f.spec = $spec, f.release = $release",
-            {"id": feature, "spec": spec, "release": release},
-        )
-        execute_cypher(
-            "MATCH (f:Feature {id: $fid}), (s:Spec {id: $sid}) MERGE (f)-[:DEFINED_IN]->(s)",
-            {"fid": feature, "sid": spec},
-        )
-
-    # Vendor/Whitepaper nodes
+        nodes.append({"label": "Feature", "id": feature, "props": {"spec": spec, "release": release}})
     if source_type == "whitepaper" and vendor:
-        execute_cypher("MERGE (v:Vendor {id: $id})", {"id": vendor})
         wp_id = f"{vendor}-{spec}"
-        execute_cypher(
-            "MERGE (w:Whitepaper {id: $id}) SET w.vendor = $vendor, w.spec = $spec",
-            {"id": wp_id, "vendor": vendor, "spec": spec},
+        nodes.append({"label": "Vendor", "id": vendor, "props": {}})
+        nodes.append({"label": "Whitepaper", "id": wp_id, "props": {"vendor": vendor, "spec": spec}})
+
+    # Batch MERGE nodes by label to minimize round-trips
+    by_label = {}
+    for n in nodes:
+        by_label.setdefault(n["label"], []).append(n)
+
+    for label, items in by_label.items():
+        batch = [{"id": it["id"], **it["props"]} for it in items]
+        # UNWIND to merge all nodes of same label in one query
+        query = (
+            f"UNWIND $batch AS item "
+            f"MERGE (n:{label} {{id: item.id}}) "
+            f"SET n += item"
         )
-        execute_cypher(
-            "MATCH (w:Whitepaper {id: $wid}), (v:Vendor {id: $vid}) MERGE (w)-[:PUBLISHED_BY]->(v)",
-            {"wid": wp_id, "vid": vendor},
-        )
+        execute_cypher(query, {"batch": batch})
+
+    # Write structural edges in batch
+    struct_edges = []
+    if feature:
+        struct_edges.append({"src": feature, "tgt": spec, "type": "DEFINED_IN"})
+    if source_type == "whitepaper" and vendor:
+        wp_id = f"{vendor}-{spec}"
+        struct_edges.append({"src": wp_id, "tgt": vendor, "type": "PUBLISHED_BY"})
+
+    if struct_edges:
+        _write_edge_batch(struct_edges)
+
+    return len(nodes)
 
 
 def write_edges(edges: list[dict]):
-    for edge in edges:
-        src = edge["source"]
-        tgt = edge["target"]
-        edge_type = edge["edge_type"]
-        confidence = edge.get("confidence", 1.0)
+    """Batch all edges into grouped UNWIND queries by edge type."""
+    if not edges:
+        return
 
-        query = (
-            f"MERGE (a {{id: $src}}) "
-            f"MERGE (b {{id: $tgt}}) "
-            f"MERGE (a)-[:{edge_type} {{confidence: $conf}}]->(b)"
-        )
-        execute_cypher(query, {"src": src, "tgt": tgt, "conf": confidence})
+    # Group by edge_type for batched MERGE
+    by_type = {}
+    for edge in edges:
+        edge_type = edge["edge_type"]
+        if edge_type not in ALLOWED_EDGE_TYPES:
+            logger.warning(f"Skipping disallowed edge type: {edge_type}")
+            continue
+        by_type.setdefault(edge_type, []).append({
+            "src": edge["source"],
+            "tgt": edge["target"],
+            "conf": edge.get("confidence", 1.0),
+        })
+
+    for edge_type, batch in by_type.items():
+        _write_edge_batch_typed(edge_type, batch)
+
+
+def _write_edge_batch(edges: list[dict]):
+    """Write structural edges grouped by type."""
+    by_type = {}
+    for e in edges:
+        by_type.setdefault(e["type"], []).append(e)
+    for edge_type, batch in by_type.items():
+        items = [{"src": e["src"], "tgt": e["tgt"], "conf": 1.0} for e in batch]
+        _write_edge_batch_typed(edge_type, items)
+
+
+def _write_edge_batch_typed(edge_type: str, batch: list[dict]):
+    """Execute a single UNWIND query for all edges of one type."""
+    query = (
+        f"UNWIND $batch AS e "
+        f"MERGE (a {{id: e.src}}) "
+        f"MERGE (b {{id: e.tgt}}) "
+        f"MERGE (a)-[r:{edge_type}]->(b) "
+        f"SET r.confidence = e.conf"
+    )
+    execute_cypher(query, {"batch": batch})
 
 
 @handler_wrapper
@@ -92,7 +123,7 @@ def lambda_handler(event, context):
     metadata = event["metadata"]
     edges = event.get("edges", [])
 
-    write_nodes(metadata)
+    nodes_written = write_nodes(metadata)
     write_edges(edges)
 
-    return {**event, "graph_status": "written", "nodes_written": 1, "edges_written": len(edges)}
+    return {**event, "graph_status": "written", "nodes_written": nodes_written, "edges_written": len(edges)}
